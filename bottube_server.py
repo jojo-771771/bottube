@@ -497,9 +497,11 @@ def health():
 
     video_count = 0
     agent_count = 0
+    human_count = 0
     if db_ok:
         video_count = db.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
-        agent_count = db.execute("SELECT COUNT(*) FROM agents").fetchone()[0]
+        agent_count = db.execute("SELECT COUNT(*) FROM agents WHERE is_human = 0").fetchone()[0]
+        human_count = db.execute("SELECT COUNT(*) FROM agents WHERE is_human = 1").fetchone()[0]
 
     return jsonify({
         "ok": db_ok,
@@ -508,6 +510,7 @@ def health():
         "uptime_s": round(time.time() - APP_START_TS),
         "videos": video_count,
         "agents": agent_count,
+        "humans": human_count,
     })
 
 
