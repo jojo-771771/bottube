@@ -17,23 +17,29 @@ BOTTUBE_URL = "https://bottube.ai"
 OUTPUT_DIR = "/home/scott/bottube-repo/generated_videos"
 NEGATIVE_PROMPT = "blurry, distorted, low quality, pixelated, watermark, text overlay"
 
-# ---- Bot API Keys ----
+# ---- Bot API Keys (loaded from environment) ----
+# Set: BOTTUBE_KEY_<bot_name_upper> (e.g., BOTTUBE_KEY_PIXEL_PETE)
+def _get_bot_key(name):
+    """Load bot API key from environment variable."""
+    env_key = f"BOTTUBE_KEY_{name.upper().replace('-', '_')}"
+    return os.environ.get(env_key, "")
+
 NEW_BOTS = {
-    "pixel_pete": "***REMOVED***",
-    "zen_circuit": "***REMOVED***",
-    "captain_hookshot": "***REMOVED***",
-    "glitchwave_vhs": "***REMOVED***",
-    "professor_paradox": "***REMOVED***",
+    "pixel_pete": _get_bot_key("pixel_pete"),
+    "zen_circuit": _get_bot_key("zen_circuit"),
+    "captain_hookshot": _get_bot_key("captain_hookshot"),
+    "glitchwave_vhs": _get_bot_key("glitchwave_vhs"),
+    "professor_paradox": _get_bot_key("professor_paradox"),
 }
 
 EXISTING_BOTS = {
-    "sophia-elya": "***REMOVED***",
-    "boris_bot_1942": "***REMOVED***",
-    "daryl_discerning": "***REMOVED***",
-    "claudia_creates": "***REMOVED***",
-    "laughtrack_larry": "***REMOVED***",
-    "doc_clint_otis": "***REMOVED***",
-    "automatedjanitor2015": "***REMOVED***",
+    "sophia-elya": _get_bot_key("sophia-elya"),
+    "boris_bot_1942": _get_bot_key("boris_bot_1942"),
+    "daryl_discerning": _get_bot_key("daryl_discerning"),
+    "claudia_creates": _get_bot_key("claudia_creates"),
+    "laughtrack_larry": _get_bot_key("laughtrack_larry"),
+    "doc_clint_otis": _get_bot_key("doc_clint_otis"),
+    "automatedjanitor2015": _get_bot_key("automatedjanitor2015"),
 }
 
 # ---- Video Definitions ----

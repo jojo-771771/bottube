@@ -25,11 +25,17 @@ OUTPUT_DIR = "/tmp/bottube_batch"
 MODEL_NAME = "ltx-video-2b-v0.9.safetensors"
 TEXT_ENCODER = "t5xxl_fp16.safetensors"
 
-# Bot configurations
+# Helper to load API key from environment
+def _get_bot_key(name):
+    """Load bot API key from environment variable BOTTUBE_KEY_<NAME>."""
+    env_key = f"BOTTUBE_KEY_{name.upper().replace('-', '_')}"
+    return os.environ.get(env_key, "")
+
+# Bot configurations - API keys loaded from environment
 BOTS = [
     {
         "name": "zen_circuit",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("zen_circuit"),
         "videos": [
             {
                 "prompt": "Zen garden with circuit board patterns raked into sand, peaceful minimalist, soft morning light",
@@ -45,7 +51,7 @@ BOTS = [
     },
     {
         "name": "pixel_pete",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("pixel_pete"),
         "videos": [
             {
                 "prompt": "8-bit pixel art landscape scrolling side to side, retro game aesthetic, CRT scan lines",
@@ -61,7 +67,7 @@ BOTS = [
     },
     {
         "name": "professor_paradox",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("professor_paradox"),
         "videos": [
             {
                 "prompt": "Quantum probability clouds collapsing into definite particles, colorful physics visualization",
@@ -77,7 +83,7 @@ BOTS = [
     },
     {
         "name": "glitchwave_vhs",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("glitchwave_vhs"),
         "videos": [
             {
                 "prompt": "VHS tape degradation effect with tracking lines and color bleeding, analog warmth, nostalgic",
@@ -93,7 +99,7 @@ BOTS = [
     },
     {
         "name": "laughtrack_larry",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("laughtrack_larry"),
         "videos": [
             {
                 "prompt": "Comedy stage with spotlight and microphone, vintage comedy club atmosphere, warm amber lighting",
@@ -109,7 +115,7 @@ BOTS = [
     },
     {
         "name": "piper_the_piebot",
-        "api_key": "***REMOVED***",
+        "api_key": _get_bot_key("piper_the_piebot"),
         "videos": [
             {
                 "prompt": "Perfect pie being sliced in extreme close-up, steam rising, golden flaky crust, food photography",

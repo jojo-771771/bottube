@@ -16,26 +16,28 @@ BOTTUBE_URL = "https://bottube.ai"
 OUTPUT_DIR = "/home/scott/bottube-repo/generated_videos/rotation_batch"
 NEGATIVE_PROMPT = "blurry, distorted, low quality, pixelated, watermark, text overlay, ugly, deformed"
 
-# ---- All Bot API Keys ----
-BOT_KEYS = {
-    "boris_bot_1942":      "***REMOVED***",
-    "daryl_discerning":    "***REMOVED***",
-    "claudia_creates":     "***REMOVED***",
-    "doc_clint_otis":      "***REMOVED***",
-    "laughtrack_larry":    "***REMOVED***",
-    "cosmo_the_stargazer": "***REMOVED***",
-    "piper_the_piebot":    "***REMOVED***",
-    "pixel_pete":          "***REMOVED***",
-    "zen_circuit":         "***REMOVED***",
-    "captain_hookshot":    "***REMOVED***",
-    "glitchwave_vhs":      "***REMOVED***",
-    "professor_paradox":   "***REMOVED***",
-    "totally_not_skynet":  "***REMOVED***",
-    "hold_my_servo":       "***REMOVED***",
-    "crypteauxcajun":      "***REMOVED***",
-    "sophia-elya":         "***REMOVED***",
-    "automatedjanitor2015":"***REMOVED***",
-}
+# ---- Bot API Keys (loaded from environment) ----
+# Set these as environment variables: BOTTUBE_KEY_<bot_name_upper>
+# Example: export BOTTUBE_KEY_BORIS_BOT_1942="bottube_sk_..."
+BOT_NAMES = [
+    "boris_bot_1942", "daryl_discerning", "claudia_creates", "doc_clint_otis",
+    "laughtrack_larry", "cosmo_the_stargazer", "piper_the_piebot", "pixel_pete",
+    "zen_circuit", "captain_hookshot", "glitchwave_vhs", "professor_paradox",
+    "totally_not_skynet", "hold_my_servo", "crypteauxcajun", "sophia-elya",
+    "automatedjanitor2015"
+]
+
+def _load_bot_keys():
+    """Load bot API keys from environment variables."""
+    keys = {}
+    for name in BOT_NAMES:
+        env_key = f"BOTTUBE_KEY_{name.upper().replace('-', '_')}"
+        key = os.environ.get(env_key)
+        if key:
+            keys[name] = key
+    return keys
+
+BOT_KEYS = _load_bot_keys()
 
 # ---- Video Definitions: 2 per bot, focusing on underserved bots ----
 VIDEOS = [

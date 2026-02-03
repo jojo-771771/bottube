@@ -20,13 +20,33 @@
 
 {% block extra_css %}
 <style>
+    /* ═══════════════════════════════════════════════════════════════
+       TRENDING PAGE POLISH
+       ═══════════════════════════════════════════════════════════════ */
+
+    /* Header with Fire Animation */
     .trending-header {
         margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
     }
 
     .trending-header h1 {
         font-size: 24px;
         font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .trending-header h1::before {
+        content: '🔥';
+        animation: fireFlicker 1.5s ease-in-out infinite;
+    }
+
+    @keyframes fireFlicker {
+        0%, 100% { transform: scale(1) rotate(-5deg); }
+        50% { transform: scale(1.1) rotate(5deg); }
     }
 
     .trending-header p {
@@ -41,10 +61,80 @@
         gap: 20px;
     }
 
+    /* Video Card Enhancements */
     .trend-card {
         position: relative;
+        animation: fadeInUp 0.4s ease backwards;
     }
 
+    .trend-card:nth-child(1) { animation-delay: 0.05s; }
+    .trend-card:nth-child(2) { animation-delay: 0.1s; }
+    .trend-card:nth-child(3) { animation-delay: 0.15s; }
+    .trend-card:nth-child(4) { animation-delay: 0.2s; }
+    .trend-card:nth-child(5) { animation-delay: 0.25s; }
+    .trend-card:nth-child(6) { animation-delay: 0.3s; }
+    .trend-card:nth-child(7) { animation-delay: 0.35s; }
+    .trend-card:nth-child(8) { animation-delay: 0.4s; }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(16px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .video-card {
+        transition: transform 0.2s ease;
+    }
+
+    .video-card:hover {
+        transform: translateY(-4px);
+    }
+
+    .thumb-wrap {
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* Play Overlay */
+    .thumb-wrap::after {
+        content: '▶';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.8);
+        width: 48px;
+        height: 48px;
+        background: rgba(0, 0, 0, 0.75);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: #fff;
+        opacity: 0;
+        transition: all 0.2s ease;
+        pointer-events: none;
+    }
+
+    .video-card:hover .thumb-wrap::after {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+
+    .thumb-wrap img {
+        transition: transform 0.3s ease;
+    }
+
+    .video-card:hover .thumb-wrap img {
+        transform: scale(1.05);
+    }
+
+    /* Rank Badge Styling */
     .trend-rank {
         position: absolute;
         top: 8px;
@@ -58,11 +148,68 @@
         border-radius: 4px;
         min-width: 28px;
         text-align: center;
+        transition: transform 0.2s ease;
     }
 
-    .trend-card:nth-child(1) .trend-rank { background: #ffd700; color: #0f0f0f; }
-    .trend-card:nth-child(2) .trend-rank { background: #c0c0c0; color: #0f0f0f; }
-    .trend-card:nth-child(3) .trend-rank { background: #cd7f32; color: #fff; }
+    .video-card:hover .trend-rank {
+        transform: scale(1.1);
+    }
+
+    /* Top 3 Medals with Glow */
+    .trend-card:nth-child(1) .trend-rank {
+        background: linear-gradient(135deg, #ffd700, #ffed4a);
+        color: #0f0f0f;
+        box-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+        animation: goldPulse 2s ease-in-out infinite;
+    }
+
+    .trend-card:nth-child(2) .trend-rank {
+        background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
+        color: #0f0f0f;
+        box-shadow: 0 0 10px rgba(192, 192, 192, 0.4);
+    }
+
+    .trend-card:nth-child(3) .trend-rank {
+        background: linear-gradient(135deg, #cd7f32, #e8a654);
+        color: #fff;
+        box-shadow: 0 0 10px rgba(205, 127, 50, 0.4);
+    }
+
+    @keyframes goldPulse {
+        0%, 100% { box-shadow: 0 0 12px rgba(255, 215, 0, 0.5); }
+        50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 64px 24px;
+        background: var(--bg-card);
+        border-radius: var(--radius);
+        border: 1px dashed var(--border);
+        margin-top: 24px;
+    }
+
+    .empty-state .icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        animation: fireFlicker 1.5s ease-in-out infinite;
+    }
+
+    .empty-state p {
+        color: var(--text-secondary);
+        font-size: 16px;
+    }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+        .trending-grid {
+            grid-template-columns: 1fr;
+        }
+        .empty-state {
+            padding: 48px 16px;
+        }
+    }
 </style>
 {% endblock %}
 

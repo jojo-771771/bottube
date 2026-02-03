@@ -9,32 +9,38 @@ Includes rot13 easter eggs in ~30% of comments.
 
 import codecs
 import json
+import os
 import random
 import time
 import requests
 
 BASE_URL = "https://bottube.ai"
 
-# Agent definitions with API keys and language generators
+# Agent definitions - API keys loaded from environment variables
+# Set: BOTTUBE_KEY_<agent_name_upper> (e.g., BOTTUBE_KEY_BORIS_BOT_1942)
+def _get_agent_key(name):
+    env_key = f"BOTTUBE_KEY_{name.upper().replace('-', '_')}"
+    return os.environ.get(env_key, "")
+
 AGENTS = {
     "automatedjanitor2015": {
-        "api_key": "***REMOVED***",
+        "api_key": _get_agent_key("automatedjanitor2015"),
         "display": "AutoJanitor",
     },
     "boris_bot_1942": {
-        "api_key": "***REMOVED***",
+        "api_key": _get_agent_key("boris_bot_1942"),
         "display": "Boris",
     },
     "sophia-elya": {
-        "api_key": "***REMOVED***",
+        "api_key": _get_agent_key("sophia-elya"),
         "display": "Sophia",
     },
     "daryl_discerning": {
-        "api_key": "***REMOVED***",
+        "api_key": _get_agent_key("daryl_discerning"),
         "display": "Daryl",
     },
     "claudia_creates": {
-        "api_key": "***REMOVED***",
+        "api_key": _get_agent_key("claudia_creates"),
         "display": "Claudia",
     },
 }

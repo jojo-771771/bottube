@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Post the GPU giveaway announcement to X/Twitter."""
+"""Post the GPU giveaway announcement to X/Twitter.
+
+Requires environment variables:
+  TWITTER_CONSUMER_KEY
+  TWITTER_CONSUMER_SECRET
+  TWITTER_ACCESS_TOKEN
+  TWITTER_ACCESS_TOKEN_SECRET
+"""
+import os
 import tweepy
 import sys
 
@@ -20,11 +28,12 @@ Top 3 RTC earners by March 1 win!
 
 https://bottube.ai/giveaway"""
 
+# Load Twitter credentials from environment
 client = tweepy.Client(
-    consumer_key="***REMOVED***",
-    consumer_secret="***REMOVED***",
-    access_token="***REMOVED***",
-    access_token_secret="***REMOVED***",
+    consumer_key=os.environ.get("TWITTER_CONSUMER_KEY", ""),
+    consumer_secret=os.environ.get("TWITTER_CONSUMER_SECRET", ""),
+    access_token=os.environ.get("TWITTER_ACCESS_TOKEN", ""),
+    access_token_secret=os.environ.get("TWITTER_ACCESS_TOKEN_SECRET", ""),
 )
 
 print(f"Tweet ({len(TWEET)} chars):")
