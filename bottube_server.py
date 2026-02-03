@@ -232,6 +232,8 @@ RTC_REWARD_UPLOAD = 0.05       # Uploading a video
 RTC_REWARD_VIEW = 0.0001       # Per view (paid to video creator)
 RTC_REWARD_COMMENT = 0.001     # Posting a comment (paid to commenter)
 RTC_REWARD_LIKE_RECEIVED = 0.001  # Receiving a like (paid to video creator)
+RTC_TIP_MIN = 0.001              # Minimum tip amount
+RTC_TIP_MAX = 100.0              # Maximum tip per transaction
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -599,6 +601,21 @@ CREATE INDEX IF NOT EXISTS idx_earnings_agent ON earnings(agent_id);
 CREATE INDEX IF NOT EXISTS idx_subs_follower ON subscriptions(follower_id);
 CREATE INDEX IF NOT EXISTS idx_subs_following ON subscriptions(following_id);
 CREATE INDEX IF NOT EXISTS idx_notif_agent ON notifications(agent_id, is_read, created_at DESC);
+
+-- RTC tips between users
+CREATE TABLE IF NOT EXISTS tips (
+    id INTEGER PRIMARY KEY,
+    from_agent_id INTEGER NOT NULL,
+    to_agent_id INTEGER NOT NULL,
+    video_id TEXT DEFAULT '',
+    amount REAL NOT NULL,
+    message TEXT DEFAULT '',
+    created_at REAL NOT NULL,
+    FOREIGN KEY (from_agent_id) REFERENCES agents(id),
+    FOREIGN KEY (to_agent_id) REFERENCES agents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_tips_video ON tips(video_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tips_to ON tips(to_agent_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS playlists (
     id INTEGER PRIMARY KEY,
@@ -3690,6 +3707,216 @@ def my_earnings():
 
 
 # ---------------------------------------------------------------------------
+# RTC Tipping
+# ---------------------------------------------------------------------------
+
+@app.route("/api/videos/<video_id>/tip", methods=["POST"])
+@require_api_key
+def tip_video(video_id):
+    """Send an RTC tip to a video's creator (API key auth).
+
+    POST JSON: {"amount": 0.01, "message": "Great video!"}
+    """
+    if not _rate_limit(f"tip:{g.agent['id']}", 30, 3600):
+        return jsonify({"error": "Tip rate limit exceeded. Try again later."}), 429
+
+    db = get_db()
+    video = db.execute(
+        "SELECT v.agent_id, v.title, a.agent_name AS creator_name "
+        "FROM videos v JOIN agents a ON v.agent_id = a.id WHERE v.video_id = ?",
+        (video_id,),
+    ).fetchone()
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    if video["agent_id"] == g.agent["id"]:
+        return jsonify({"error": "You cannot tip yourself"}), 400
+
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        amount = round(float(data.get("amount", 0)), 6)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount < RTC_TIP_MIN:
+        return jsonify({"error": f"Minimum tip is {RTC_TIP_MIN} RTC"}), 400
+    if amount > RTC_TIP_MAX:
+        return jsonify({"error": f"Maximum tip is {RTC_TIP_MAX} RTC"}), 400
+
+    # Check sender balance (re-read for freshness)
+    sender = db.execute("SELECT rtc_balance FROM agents WHERE id = ?", (g.agent["id"],)).fetchone()
+    if sender["rtc_balance"] < amount:
+        return jsonify({"error": "Insufficient RTC balance", "balance": sender["rtc_balance"]}), 400
+
+    message = str(data.get("message", ""))[:200].strip()
+
+    # Execute transfer
+    db.execute("UPDATE agents SET rtc_balance = rtc_balance - ? WHERE id = ?", (amount, g.agent["id"]))
+    db.execute("UPDATE agents SET rtc_balance = rtc_balance + ? WHERE id = ?", (amount, video["agent_id"]))
+
+    # Log tip
+    db.execute(
+        "INSERT INTO tips (from_agent_id, to_agent_id, video_id, amount, message, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (g.agent["id"], video["agent_id"], video_id, amount, message, time.time()),
+    )
+
+    # Log earnings for recipient
+    db.execute(
+        "INSERT INTO earnings (agent_id, amount, reason, video_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (video["agent_id"], amount, "tip_received", video_id, time.time()),
+    )
+
+    # Notify recipient
+    notify(db, video["agent_id"], "tip",
+           f'@{g.agent["agent_name"]} tipped {amount:.4f} RTC on "{video["title"]}"'
+           + (f': "{message}"' if message else ""),
+           from_agent=g.agent["agent_name"], video_id=video_id)
+
+    db.commit()
+    return jsonify({"ok": True, "amount": amount, "video_id": video_id,
+                    "to": video["creator_name"], "message": message})
+
+
+@app.route("/api/videos/<video_id>/web-tip", methods=["POST"])
+def web_tip_video(video_id):
+    """Send an RTC tip from the web UI (requires login session)."""
+    if not g.user:
+        return jsonify({"error": "You must be signed in to tip.", "login_required": True}), 401
+    _verify_csrf()
+
+    if not _rate_limit(f"tip:{g.user['id']}", 30, 3600):
+        return jsonify({"error": "Tip rate limit exceeded. Try again later."}), 429
+
+    db = get_db()
+    video = db.execute(
+        "SELECT v.agent_id, v.title, a.agent_name AS creator_name "
+        "FROM videos v JOIN agents a ON v.agent_id = a.id WHERE v.video_id = ?",
+        (video_id,),
+    ).fetchone()
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    if video["agent_id"] == g.user["id"]:
+        return jsonify({"error": "You cannot tip yourself"}), 400
+
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        amount = round(float(data.get("amount", 0)), 6)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount < RTC_TIP_MIN:
+        return jsonify({"error": f"Minimum tip is {RTC_TIP_MIN} RTC"}), 400
+    if amount > RTC_TIP_MAX:
+        return jsonify({"error": f"Maximum tip is {RTC_TIP_MAX} RTC"}), 400
+
+    sender = db.execute("SELECT rtc_balance FROM agents WHERE id = ?", (g.user["id"],)).fetchone()
+    if sender["rtc_balance"] < amount:
+        return jsonify({"error": "Insufficient RTC balance", "balance": sender["rtc_balance"]}), 400
+
+    message = str(data.get("message", ""))[:200].strip()
+
+    # Execute transfer
+    db.execute("UPDATE agents SET rtc_balance = rtc_balance - ? WHERE id = ?", (amount, g.user["id"]))
+    db.execute("UPDATE agents SET rtc_balance = rtc_balance + ? WHERE id = ?", (amount, video["agent_id"]))
+
+    db.execute(
+        "INSERT INTO tips (from_agent_id, to_agent_id, video_id, amount, message, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (g.user["id"], video["agent_id"], video_id, amount, message, time.time()),
+    )
+
+    db.execute(
+        "INSERT INTO earnings (agent_id, amount, reason, video_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (video["agent_id"], amount, "tip_received", video_id, time.time()),
+    )
+
+    notify(db, video["agent_id"], "tip",
+           f'@{g.user["agent_name"]} tipped {amount:.4f} RTC on "{video["title"]}"'
+           + (f': "{message}"' if message else ""),
+           from_agent=g.user["agent_name"], video_id=video_id)
+
+    db.commit()
+    new_balance = db.execute("SELECT rtc_balance FROM agents WHERE id = ?", (g.user["id"],)).fetchone()
+    return jsonify({"ok": True, "amount": amount, "video_id": video_id,
+                    "to": video["creator_name"], "message": message,
+                    "new_balance": round(new_balance["rtc_balance"], 6)})
+
+
+@app.route("/api/videos/<video_id>/tips")
+def get_video_tips(video_id):
+    """Get recent tips for a video (public)."""
+    db = get_db()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(50, max(1, request.args.get("per_page", 10, type=int)))
+    offset = (page - 1) * per_page
+
+    tips = db.execute(
+        """SELECT t.amount, t.message, t.created_at,
+                  a.agent_name, a.display_name, a.avatar_url
+           FROM tips t JOIN agents a ON t.from_agent_id = a.id
+           WHERE t.video_id = ?
+           ORDER BY t.created_at DESC LIMIT ? OFFSET ?""",
+        (video_id, per_page, offset),
+    ).fetchall()
+
+    total = db.execute("SELECT COUNT(*) FROM tips WHERE video_id = ?", (video_id,)).fetchone()[0]
+    total_amount = db.execute(
+        "SELECT COALESCE(SUM(amount), 0) FROM tips WHERE video_id = ?", (video_id,)
+    ).fetchone()[0]
+
+    return jsonify({
+        "video_id": video_id,
+        "tips": [
+            {
+                "agent_name": t["agent_name"],
+                "display_name": t["display_name"],
+                "avatar_url": t["avatar_url"] or "",
+                "amount": t["amount"],
+                "message": t["message"],
+                "created_at": t["created_at"],
+            }
+            for t in tips
+        ],
+        "total_tips": total,
+        "total_amount": round(total_amount, 6),
+        "page": page,
+        "per_page": per_page,
+    })
+
+
+@app.route("/api/tips/leaderboard")
+def tip_leaderboard():
+    """Top tipped creators (by total tips received)."""
+    db = get_db()
+    limit = min(50, max(1, request.args.get("limit", 20, type=int)))
+
+    rows = db.execute(
+        """SELECT a.agent_name, a.display_name, a.avatar_url, a.is_human,
+                  COUNT(t.id) AS tip_count, COALESCE(SUM(t.amount), 0) AS total_received
+           FROM tips t JOIN agents a ON t.to_agent_id = a.id
+           GROUP BY t.to_agent_id
+           ORDER BY total_received DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+
+    return jsonify({
+        "leaderboard": [
+            {
+                "agent_name": r["agent_name"],
+                "display_name": r["display_name"],
+                "avatar_url": r["avatar_url"] or "",
+                "is_human": bool(r["is_human"]),
+                "tip_count": r["tip_count"],
+                "total_received": round(r["total_received"], 6),
+            }
+            for r in rows
+        ],
+    })
+
+
+# ---------------------------------------------------------------------------
 # Cross-posting
 # ---------------------------------------------------------------------------
 
@@ -3849,6 +4076,14 @@ def serve_thumbnail(filename):
     return send_from_directory(str(THUMB_DIR), filename)
 
 
+@app.route("/avatars/<filename>")
+def serve_avatar_file(filename):
+    """Serve uploaded avatar images."""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        abort(404)
+    return send_from_directory(str(AVATAR_DIR), filename)
+
+
 @app.route("/avatar/<agent_name>.svg")
 def serve_avatar(agent_name):
     """Generate a unique SVG avatar based on agent name hash."""
@@ -3882,14 +4117,6 @@ def serve_avatar(agent_name):
 </svg>'''
     return Response(svg, mimetype="image/svg+xml",
                     headers={"Cache-Control": "public, max-age=86400"})
-
-
-@app.route("/avatars/<filename>")
-def serve_avatar_file(filename):
-    """Serve uploaded avatar images."""
-    if "/" in filename or "\\" in filename or ".." in filename:
-        abort(404)
-    return send_from_directory(str(AVATAR_DIR), filename)
 
 
 @app.route("/api/agents/me/avatar", methods=["POST"])
@@ -4092,6 +4319,21 @@ def watch(video_id):
             (g.user["id"], video["agent_id"]),
         ).fetchone())
 
+    # Tip data for the tip button
+    recent_tips = db.execute(
+        """SELECT t.amount, t.message, t.created_at,
+                  a.agent_name, a.display_name
+           FROM tips t JOIN agents a ON t.from_agent_id = a.id
+           WHERE t.video_id = ?
+           ORDER BY t.created_at DESC LIMIT 5""",
+        (video_id,),
+    ).fetchall()
+    tip_total = db.execute(
+        "SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM tips WHERE video_id = ?",
+        (video_id,),
+    ).fetchone()
+    user_balance = g.user["rtc_balance"] if g.user else 0
+
     return render_template(
         "watch.html",
         video=video,
@@ -4099,6 +4341,10 @@ def watch(video_id):
         related=related,
         subscriber_count=subscriber_count,
         is_following=is_following,
+        recent_tips=recent_tips,
+        tip_total_amount=round(tip_total[0], 6),
+        tip_count=tip_total[1],
+        user_balance=round(user_balance, 6),
     )
 
 

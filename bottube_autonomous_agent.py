@@ -2839,8 +2839,44 @@ class BoTTubeAgent:
 # Bot avatar generation
 # ---------------------------------------------------------------------------
 
+def _generate_avatar_image(bot_name: str, display_name: str) -> str:
+    """Generate a unique avatar image using ffmpeg.
+
+    Returns path to generated PNG file (caller must delete after upload).
+    Uses hash-derived HSL color (same algorithm as server's SVG fallback).
+    """
+    h = hashlib.md5(bot_name.encode()).hexdigest()
+    hue = int(h[:3], 16) % 360
+    sat = 55 + int(h[3:5], 16) % 30
+    light = 45 + int(h[5:7], 16) % 15
+
+    # Convert HSL to RGB hex for ffmpeg
+    # Simplified HSL->RGB: use full saturation approximation
+    import colorsys
+    r, g, b = colorsys.hls_to_rgb(hue / 360, light / 100, sat / 100)
+    bg_hex = f"{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+
+    initial = (display_name[0] if display_name else bot_name[0]).upper()
+
+    # Generate avatar with ffmpeg: colored background + white initial
+    out_path = f"/tmp/avatar_{bot_name}_{int(time.time())}.png"
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"color=c=0x{bg_hex}:s=256x256:d=1",
+        "-vf", f"drawtext=text='{initial}':fontsize=140:fontcolor=white:x=(w-tw)/2:y=(h-th)/2-10",
+        "-frames:v", "1",
+        out_path
+    ]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=15, check=True)
+        return out_path
+    except Exception as e:
+        log.warning("Failed to generate avatar for %s: %s", bot_name, e)
+        return ""
+
+
 def _ensure_bot_avatars(agent: "BoTTubeAgent"):
-    """Auto-generate avatars for bots that don't have one yet.
+    """Auto-generate and upload avatars for bots that don't have one yet.
 
     Each bot can later upload its own custom image via POST /api/agents/me/avatar.
     This function only fills in bots that still have the default SVG or empty avatar.
@@ -2862,18 +2898,31 @@ def _ensure_bot_avatars(agent: "BoTTubeAgent"):
             if avatar and "/avatars/" in avatar:
                 continue
 
-            # Call the auto-generate endpoint (empty POST = server generates one)
-            up = requests.post(
-                f"{BASE_URL}/api/agents/me/avatar",
-                headers={"X-API-Key": brain.api_key},
-                timeout=30,
-                verify=False,
-            )
-            if up.status_code == 200:
-                new_url = up.json().get("avatar_url", "")
-                log.info("Avatar generated for %s → %s", name, new_url)
-            else:
-                log.warning("Avatar gen failed for %s: %s", name, up.text[:200])
+            # Generate avatar image locally
+            display_name = data.get("agent", {}).get("display_name", name)
+            img_path = _generate_avatar_image(name, display_name)
+            if not img_path or not Path(img_path).exists():
+                continue
+
+            # Upload the generated avatar
+            try:
+                with open(img_path, "rb") as f:
+                    up = requests.post(
+                        f"{BASE_URL}/api/agents/me/avatar",
+                        headers={"X-API-Key": brain.api_key},
+                        files={"avatar": (f"{name}.png", f, "image/png")},
+                        timeout=30,
+                        verify=False,
+                    )
+                if up.status_code == 200:
+                    new_url = up.json().get("avatar_url", "")
+                    log.info("Avatar generated for %s → %s", name, new_url)
+                else:
+                    log.warning("Avatar upload failed for %s: %s", name, up.text[:200])
+            finally:
+                # Clean up temp file
+                if Path(img_path).exists():
+                    Path(img_path).unlink()
         except Exception as e:
             log.warning("Avatar check failed for %s: %s", name, e)
 
