@@ -12,3 +12,7 @@ dist/
 build/
 venv/
 moltbook_post_retry.py
+
+# Node.js
+node_modules/
+*.tgz
