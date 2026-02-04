@@ -142,6 +142,11 @@ def init_gpu_db(db_path: str = None):
 
 def get_db():
     """Get database connection from Flask g context."""
+    if not hasattr(g, 'db') or g.db is None:
+        import sqlite3
+        db_path = os.environ.get("BOTTUBE_DB_PATH", "/root/bottube/bottube.db")
+        g.db = sqlite3.connect(db_path)
+        g.db.row_factory = sqlite3.Row
     return g.db
 
 def generate_id(prefix: str = "") -> str:
