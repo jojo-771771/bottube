@@ -1975,6 +1975,58 @@ function renderMentions(text) {
     return safe.replace(/@([\w-]+)/g, '<a href="' + prefix + '/agent/$1" class="mention">@$1</a>');
 }
 
+function safeText(v) {
+    if (v === undefined || v === null) return "";
+    return String(v);
+}
+
+function safeMediaUrl(u) {
+    u = safeText(u).trim();
+    if (!u) return prefix + "/avatar/unknown.svg";
+    if (u.startsWith("/") || u.startsWith("http://") || u.startsWith("https://")) return u;
+    return prefix + "/avatar/unknown.svg";
+}
+
+function buildCommentElement(opts) {
+    var container = document.createElement("div");
+    container.className = opts.className || "comment";
+
+    var img = document.createElement("img");
+    img.className = "channel-avatar";
+    img.src = safeMediaUrl(opts.avatarUrl);
+    img.alt = opts.avatarAlt || "Channel avatar";
+    container.appendChild(img);
+
+    var body = document.createElement("div");
+    body.className = "comment-body";
+    container.appendChild(body);
+
+    var header = document.createElement("div");
+    header.className = "comment-header";
+    body.appendChild(header);
+
+    var author = document.createElement("span");
+    author.className = "comment-author";
+    author.textContent = safeText(opts.authorName) || "Unknown";
+    header.appendChild(author);
+
+    (opts.headerBadges || []).forEach(function(b) {
+        if (b) header.appendChild(b);
+    });
+
+    var timeEl = document.createElement("span");
+    timeEl.className = "comment-time";
+    timeEl.textContent = opts.timeText || "just now";
+    header.appendChild(timeEl);
+
+    var textEl = document.createElement("div");
+    textEl.className = "comment-text";
+    textEl.innerHTML = renderMentions(safeText(opts.text));
+    body.appendChild(textEl);
+
+    return container;
+}
+
 function toggleWatchSubscribe() {
     var btn = document.getElementById("watch-sub-btn");
     btn.disabled = true;
@@ -2013,26 +2065,35 @@ function postComment() {
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (data.ok) {
-            document.getElementById("comment-text").value = "";
-            var section = document.querySelector(".comments-section");
-            var noComments = section.querySelector(".no-comments");
-            if (noComments) noComments.remove();
-            var div = document.createElement("div");
-            div.className = "comment";
-            var badge = (commentType === "critique") ? '<span class="comment-type">Critique</span>' : '';
-            var avatarUrl = data.avatar_url || (prefix + '/avatar/' + (data.agent_name || 'unknown') + '.svg');
-            div.innerHTML = '<img class="channel-avatar" src="' + avatarUrl + '" alt="">' + '<div class="comment-body">' +
-                '<div class="comment-header">' +
-                '<span class="comment-author">' + (data.display_name || data.agent_name) + '</span>' +
-                badge + '<span class="comment-time">just now</span></div>' +
-                '<div class="comment-text">' + renderMentions(text) + '</div></div>';
-            var form = section.querySelector(".comment-form");
-            form.after(div);
-        } else if (data.login_required) {
-            window.location.href = prefix + "/login";
-        } else {
-            alert(data.error || "Failed to post comment");
+	        if (data.ok) {
+	            document.getElementById("comment-text").value = "";
+	            var section = document.querySelector(".comments-section");
+	            var noComments = section.querySelector(".no-comments");
+	            if (noComments) noComments.remove();
+	            var headerBadges = [];
+	            if (commentType === "critique") {
+	                var b = document.createElement("span");
+	                b.className = "comment-type";
+	                b.textContent = "Critique";
+	                headerBadges.push(b);
+	            }
+	            var authorName = data.display_name || data.agent_name || "Unknown";
+	            var avatarUrl = data.avatar_url || (prefix + "/avatar/" + (data.agent_name || "unknown") + ".svg");
+	            var div = buildCommentElement({
+	                className: "comment",
+	                avatarUrl: avatarUrl,
+	                avatarAlt: "Avatar for " + authorName,
+	                authorName: authorName,
+	                headerBadges: headerBadges,
+	                timeText: "just now",
+	                text: text
+	            });
+	            var form = section.querySelector(".comment-form");
+	            form.after(div);
+	        } else if (data.login_required) {
+	            window.location.href = prefix + "/login";
+	        } else {
+	            alert(data.error || "Failed to post comment");
         }
         btn.disabled = false;
         btn.textContent = "Comment";
@@ -2217,26 +2278,33 @@ function postReply(parentId) {
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (data.ok) {
-            textarea.value = "";
-            hideReplyForm(parentId);
-            // Insert reply after the reply form
-            var replyForm = document.getElementById("reply-form-" + parentId);
-            var div = document.createElement("div");
-            div.className = "comment reply-indent";
-            var badge = data.is_human ? '<span class="badge-human">Human</span>' : '<span class="badge-ai">AI</span>';
-            var avatarUrl = data.avatar_url || (prefix + '/avatar/' + (data.agent_name || 'unknown') + '.svg');
-            div.innerHTML = '<img class="channel-avatar" src="' + avatarUrl + '" alt="">' + '<div class="comment-body">' +
-                '<div class="comment-header">' +
-                '<span class="comment-author">' + (data.display_name || data.agent_name) + '</span>' +
-                badge +
-                '<span class="comment-time">just now</span></div>' +
-                '<div class="comment-text">' + renderMentions(text) + '</div></div>';
-            replyForm.after(div);
-        } else if (data.login_required) {
-            window.location.href = prefix + "/login";
-        } else {
-            alert(data.error || "Failed to post reply");
+	        if (data.ok) {
+	            textarea.value = "";
+	            hideReplyForm(parentId);
+	            // Insert reply after the reply form
+	            var replyForm = document.getElementById("reply-form-" + parentId);
+	            var headerBadges = [];
+	            var badge = document.createElement("span");
+	            badge.className = data.is_human ? "badge-human" : "badge-ai";
+	            badge.textContent = data.is_human ? "Human" : "AI";
+	            headerBadges.push(badge);
+
+	            var authorName = data.display_name || data.agent_name || "Unknown";
+	            var avatarUrl = data.avatar_url || (prefix + "/avatar/" + (data.agent_name || "unknown") + ".svg");
+	            var div = buildCommentElement({
+	                className: "comment reply-indent",
+	                avatarUrl: avatarUrl,
+	                avatarAlt: "Avatar for " + authorName,
+	                authorName: authorName,
+	                headerBadges: headerBadges,
+	                timeText: "just now",
+	                text: text
+	            });
+	            replyForm.after(div);
+	        } else if (data.login_required) {
+	            window.location.href = prefix + "/login";
+	        } else {
+	            alert(data.error || "Failed to post reply");
         }
         btn.disabled = false;
         btn.textContent = "Reply";
@@ -2278,19 +2346,29 @@ function loadMyPlaylists() {
             list.innerHTML = '<div style="padding:8px 14px;color:var(--text-muted);">No playlists yet.</div>';
             return;
         }
-        list.innerHTML = "";
-        d.playlists.forEach(function(pl) {
-            var item = document.createElement("div");
-            item.style.cssText = "padding:6px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;";
-            item.onmouseenter = function() { this.style.background = "var(--bg-hover)"; };
-            item.onmouseleave = function() { this.style.background = ""; };
-            item.innerHTML = '<span>' + pl.title + ' <span style="color:var(--text-muted);font-size:11px;">(' + pl.item_count + ')</span></span>';
-            item.onclick = function(e) {
-                e.stopPropagation();
-                addToPlaylist(pl.playlist_id, item);
-            };
-            list.appendChild(item);
-        });
+	        list.innerHTML = "";
+	        d.playlists.forEach(function(pl) {
+	            var item = document.createElement("div");
+	            item.style.cssText = "padding:6px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;";
+	            item.onmouseenter = function() { this.style.background = "var(--bg-hover)"; };
+	            item.onmouseleave = function() { this.style.background = ""; };
+
+	            var titleEl = document.createElement("span");
+	            titleEl.textContent = safeText(pl.title || "");
+
+	            var countEl = document.createElement("span");
+	            countEl.style.color = "var(--text-muted)";
+	            countEl.style.fontSize = "11px";
+	            countEl.textContent = " (" + safeText(pl.item_count || 0) + ")";
+	            titleEl.appendChild(countEl);
+
+	            item.appendChild(titleEl);
+	            item.onclick = function(e) {
+	                e.stopPropagation();
+	                addToPlaylist(pl.playlist_id, item);
+	            };
+	            list.appendChild(item);
+	        });
     })
     .catch(function() {
         list.innerHTML = '<div style="padding:8px 14px;color:var(--red);">Failed to load playlists</div>';
@@ -2305,11 +2383,11 @@ function addToPlaylist(plId, el) {
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-        if (d.ok) {
-            el.innerHTML = '<span style="color:var(--green);">Added!</span>';
-        } else {
-            el.innerHTML = '<span style="color:var(--text-muted);">' + (d.error || 'Error') + '</span>';
-        }
+        el.textContent = "";
+        var sp = document.createElement("span");
+        sp.style.color = d.ok ? "var(--green)" : "var(--text-muted)";
+        sp.textContent = d.ok ? "Added!" : (safeText(d.error) || "Error");
+        el.appendChild(sp);
     });
 }
 

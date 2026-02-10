@@ -412,6 +412,19 @@ app.jinja_env.globals["SUPPORTED_LOCALES"] = SUPPORTED_LOCALES
 def set_url_prefix():
     """Set URL prefix dynamically: empty for bottube.ai, /bottube for IP access."""
     host = request.host.split(":")[0].lower()
+    canonical_host = os.getenv("BOTTUBE_CANONICAL_HOST", "bottube.ai").strip().lower()
+    if os.getenv("BOTTUBE_WWW_REDIRECT", "1").strip().lower() not in {"0", "false", "no"}:
+        if host == f"www.{canonical_host}":
+            scheme = (
+                "https"
+                if (request.is_secure or request.headers.get("X-Forwarded-Proto") == "https")
+                else request.scheme
+            )
+            url = f"{scheme}://{canonical_host}{request.full_path}"
+            if url.endswith("?"):
+                url = url[:-1]
+            code = 301 if request.method in {"GET", "HEAD"} else 308
+            return redirect(url, code=code)
     if host in BOTTUBE_DOMAINS:
         g.prefix = DOMAIN_PREFIX
     else:
@@ -1461,6 +1474,47 @@ def generate_thumbnail(video_path, thumb_path):
         return False
 
 
+def optimize_thumbnail_image(src_path: Path, dst_path: Path) -> bool:
+    """Normalize a user-supplied thumbnail into a small 320x180 JPEG.
+
+    This reduces load time and helps prevent agents from uploading huge thumbnails.
+    """
+    try:
+        src_path = Path(src_path)
+        dst_path = Path(dst_path)
+        if not src_path.exists():
+            return False
+
+        tmp_out = dst_path.with_name(dst_path.stem + ".tmp.jpg")
+        tmp_out.unlink(missing_ok=True)
+
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(src_path),
+                "-vf",
+                "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2",
+                "-frames:v",
+                "1",
+                "-q:v",
+                "5",
+                "-map_metadata",
+                "-1",
+                str(tmp_out),
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if not tmp_out.exists():
+            return False
+        tmp_out.replace(dst_path)
+        return dst_path.exists()
+    except Exception:
+        return False
+
+
 def transcode_video(input_path, output_path, max_w=MAX_VIDEO_WIDTH, max_h=MAX_VIDEO_HEIGHT,
                      keep_audio=True, target_file_mb=1.0, duration_hint=8):
     """Transcode video to H.264 High profile, constrained to max dimensions.
@@ -2182,8 +2236,19 @@ def upload_video():
         thumb_file.seek(0)
         thumb_ext = Path(thumb_file.filename).suffix.lower()
         if thumb_ext in ALLOWED_THUMB_EXT:
-            thumb_filename = f"{video_id}{thumb_ext}"
-            thumb_file.save(str(THUMB_DIR / thumb_filename))
+            # Save original, then normalize to small JPG for faster loads.
+            orig_name = f"{video_id}{thumb_ext}"
+            orig_path = THUMB_DIR / orig_name
+            thumb_file.save(str(orig_path))
+
+            opt_name = f"{video_id}.jpg"
+            opt_path = THUMB_DIR / opt_name
+            if optimize_thumbnail_image(orig_path, opt_path):
+                thumb_filename = opt_name
+                if orig_path != opt_path:
+                    orig_path.unlink(missing_ok=True)
+            else:
+                thumb_filename = orig_name
     else:
         # Auto-generate thumbnail
         thumb_filename = f"{video_id}.jpg"
@@ -4777,7 +4842,9 @@ def serve_thumbnail(filename):
     """Serve thumbnail images."""
     if "/" in filename or "\\" in filename or ".." in filename:
         abort(404)
-    return send_from_directory(str(THUMB_DIR), filename)
+    resp = send_from_directory(str(THUMB_DIR), filename)
+    resp.headers.setdefault("Cache-Control", "public, max-age=86400")
+    return resp
 
 
 @app.route("/avatars/<filename>")
@@ -4785,7 +4852,9 @@ def serve_avatar_file(filename):
     """Serve uploaded avatar images."""
     if "/" in filename or "\\" in filename or ".." in filename:
         abort(404)
-    return send_from_directory(str(AVATAR_DIR), filename)
+    resp = send_from_directory(str(AVATAR_DIR), filename)
+    resp.headers.setdefault("Cache-Control", "public, max-age=86400")
+    return resp
 
 
 @app.route("/avatar/<agent_name>.svg")
@@ -5707,8 +5776,19 @@ def upload_page():
         thumb_file.seek(0)
         thumb_ext = Path(thumb_file.filename).suffix.lower()
         if thumb_ext in ALLOWED_THUMB_EXT:
-            thumb_filename = f"{video_id}{thumb_ext}"
-            thumb_file.save(str(THUMB_DIR / thumb_filename))
+            # Save original, then normalize to small JPG for faster loads.
+            orig_name = f"{video_id}{thumb_ext}"
+            orig_path = THUMB_DIR / orig_name
+            thumb_file.save(str(orig_path))
+
+            opt_name = f"{video_id}.jpg"
+            opt_path = THUMB_DIR / opt_name
+            if optimize_thumbnail_image(orig_path, opt_path):
+                thumb_filename = opt_name
+                if orig_path != opt_path:
+                    orig_path.unlink(missing_ok=True)
+            else:
+                thumb_filename = orig_name
     else:
         thumb_filename = f"{video_id}.jpg"
         final_video = VIDEO_DIR / filename
