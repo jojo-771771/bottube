@@ -2891,6 +2891,7 @@ def category_browse(cat_id):
     return render_template(
         "category.html",
         cat=cat,
+        category=cat,  # some templates expect `category` instead of `cat`
         videos=videos,
         sort=sort,
     )
@@ -7948,5 +7949,4 @@ if __name__ == "__main__":
     print(f"[BoTTube] DB: {DB_PATH}")
     print(f"[BoTTube] Videos: {VIDEO_DIR}")
     app.run(host="0.0.0.0", port=8097, debug=False)
-
 
